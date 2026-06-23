@@ -7,6 +7,7 @@ from glob import glob
 from shutil import copy
 from pathlib import Path
 from astropy.io import fits
+from astropy.wcs import WCS
 from astropy.convolution import Gaussian2DKernel, convolve, Box2DKernel
 from datetime import datetime
 from scipy import interpolate
@@ -117,6 +118,60 @@ class ResolvitProductPaths:
     def log_file(self):
         return self.diagnostics_dir / "resolvit.log"
 
+    @property
+    def instrument_image(self):
+        return self.resolvit_channel_dir / (
+            self.events_list.name.replace(
+                "_l2ce.fits",
+                "I_l2img.fits",
+            )
+        )
+
+    @property
+    def instrument_error(self):
+        return self.resolvit_channel_dir / (
+            self.events_list.name.replace(
+                "_l2ce.fits",
+                "I_l2err.fits",
+            )
+        )
+
+    @property
+    def astronomical_image(self):
+        return self.resolvit_channel_dir / (
+            self.events_list.name.replace(
+                "_l2ce.fits",
+                "A_l2img.fits",
+            )
+        )
+
+    @property
+    def astronomical_error(self):
+        return self.resolvit_channel_dir / (
+            self.events_list.name.replace(
+                "_l2ce.fits",
+                "A_l2err.fits",
+            )
+        )
+
+    @property
+    def instrument_exposure(self):
+        return self.resolvit_channel_dir / (
+            self.events_list.name.replace(
+                "_l2ce.fits",
+                "I_l2exp.fits",
+            )
+        )
+
+    @property
+    def astronomical_exposure(self):
+        return self.resolvit_channel_dir / (
+            self.events_list.name.replace(
+                "_l2ce.fits",
+                "A_l2exp.fits",
+            )
+        )
+
 
 def copy_exposure_maps(events_list, paths):
 
@@ -145,7 +200,7 @@ def copy_exposure_maps(events_list, paths):
             )
 
 
-def read_columns(events_list_hdu):
+def read_and_filter_events(events_list_hdu):
     time = events_list_hdu[1].data["MJD_L2"]
     fx = events_list_hdu[1].data["Fx"]
     fy = events_list_hdu[1].data["Fy"]
@@ -304,7 +359,7 @@ def calculate_residuals(
 ):
 
     with fits.open(events_list) as events_list_hdu:
-        time, fx, fy, photons = read_columns(events_list_hdu)
+        time, fx, fy, photons = read_and_filter_events(events_list_hdu)
 
     # Define bin edges
     t_start = time.min() + start_offset
@@ -435,33 +490,132 @@ def apply_residual_corrections(
         events_list_hdu[1].data["Fx"] = fx_corr
         events_list_hdu[1].data["Fy"] = fy_corr
 
-        events_list_hdu[0].header.add_blank()
-        events_list_hdu[0].header.add_comment("Resolvit processing information")
-        events_list_hdu[0].header.add_blank()
-
-        events_list_hdu[0].header["RESOLVIT"] = (True, "Processed using Resolvit")
-
-        events_list_hdu[0].header["RSLV_VER"] = (__version__, "Resolvit version")
-
-        events_list_hdu[0].header["RSLV_BIN"] = (bin_size, "Time bin size (s)")
-
-        events_list_hdu[0].header["RSLV_FR"] = (
-            total_events_fraction,
-            "Event fraction threshold",
-        )
-
-        events_list_hdu[0].header["RSLV_ITL"] = (
-            len(iteration_offsets),
-            "Number of iterations",
-        )
-
-        for i, offset in enumerate(iteration_offsets, start=1):
-            events_list_hdu[0].header[f"RSLV_IT{i}"] = (
-                float(offset),
-                f"Iteration {i} offset fraction",
+        instrument_exposure = Path(
+            str(events_list).replace(
+                "_l2ce.fits",
+                "I_l2exp.fits",
             )
+        )
+
+        with fits.open(instrument_exposure) as exp_hdu:
+            w = WCS(exp_hdu[0].header)
+            PC1_1 = exp_hdu[0].header["PC1_1"]
+            PC1_2 = exp_hdu[0].header["PC1_2"]
+            PC2_1 = exp_hdu[0].header["PC2_1"]
+            PC2_2 = exp_hdu[0].header["PC2_2"]
+            CDELT1 = exp_hdu[0].header["CDELT1"]
+            CDELT2 = exp_hdu[0].header["CDELT2"]
+
+        sky = w.pixel_to_world(
+            fx_corr,
+            fy_corr,
+        )
+
+        events_list_hdu[1].data["Sky_RA"] = sky.ra.degree
+        events_list_hdu[1].data["Sky_DEC"] = sky.dec.degree
+
+        if CDELT1 > 0:
+            PC1_1 = -1 * PC1_1
+            PC1_2 = -1 * PC1_2
+
+        if CDELT2 < 0:
+            PC2_1 = -1 * PC2_1
+            PC2_2 = -1 * PC2_2
+
+        (
+            events_list_hdu[1].data["Fx_astronomical"],
+            events_list_hdu[1].data["Fy_astronomical"],
+        ) = instrument_to_astronomical(
+            fx_corr,
+            fy_corr,
+            PC1_1,
+            PC1_2,
+            PC2_1,
+            PC2_2,
+        )
 
         events_list_hdu.writeto(corrected_events_list, overwrite=True)
+
+
+def instrument_to_astronomical(fx, fy, PC1_1, PC1_2, PC2_1, PC2_2):
+    fx_prime = (PC1_1 * (fx - 2400)) + (PC1_2 * (fy - 2400)) + 2400
+    fy_prime = (PC2_1 * (fx - 2400)) + (PC2_2 * (fy - 2400)) + 2400
+    return fx_prime, fy_prime
+
+
+def generate_image_products(
+    events_list,
+    exposure_map,
+    image_file,
+    error_file,
+    astronomical=False,
+):
+
+    if astronomical:
+        fx_keyword = "Fx_astronomical"
+        fy_keyword = "Fy_astronomical"
+    else:
+        fx_keyword = "Fx"
+        fy_keyword = "Fy"
+
+    with fits.open(events_list) as events_hdu, fits.open(exposure_map) as exp_hdu:
+
+        framecount_per_sec = events_hdu[0].header["AVGFRMRT"]
+
+        fx = events_hdu[1].data[fx_keyword]
+        fy = events_hdu[1].data[fy_keyword]
+        photons = events_hdu[1].data["EFFECTIVE_NUM_PHOTONS"]
+
+        image_header = exp_hdu[0].header.copy()
+        for key in events_hdu[0].header:
+            if key.startswith("RSLV") or key == "RESOLVIT":
+                image_header[key] = events_hdu[0].header[key]
+
+        bins = np.arange(-0.5, 4800.5, 1)
+
+        events, _, _ = np.histogram2d(
+            fy,
+            fx,
+            bins=(bins, bins),
+            weights=photons,
+        )
+
+        counts, _, _ = np.histogram2d(
+            fy,
+            fx,
+            bins=(bins, bins),
+        )
+
+        exposure = exp_hdu[0].data
+
+        with np.errstate(divide="ignore", invalid="ignore"):
+            cps = events / (exposure * framecount_per_sec)
+            cps_error = cps / np.sqrt(counts)
+
+        cps[exposure == 0] = 0
+        cps_error[exposure == 0] = 0
+        cps_error[counts == 0] = 0
+
+        cps = cps.astype(np.float32)
+        cps_error = cps_error.astype(np.float32)
+
+        image_hdu = fits.PrimaryHDU(cps)
+        image_hdu.header.update(image_header)
+        image_hdu.header["DATATYPE"] = "count-rate image"
+
+        error_hdu = fits.PrimaryHDU(cps_error)
+        error_hdu.header.update(image_header)
+        error_hdu.header["DATATYPE"] = "count-rate error image"
+
+        image_hdu.writeto(
+            image_file,
+            overwrite=True,
+        )
+
+        error_hdu.writeto(
+            error_file,
+            overwrite=True,
+        )
 
 
 def process_observation(
@@ -532,7 +686,49 @@ def process_events_list(
 
         current_file = paths.corrected_events_list
 
-    copy_exposure_map(
+    with fits.open(paths.corrected_events_list, mode="update") as events_list_hdu:
+        events_list_hdu[0].header.add_blank()
+        events_list_hdu[0].header.add_comment("Resolvit processing information")
+        events_list_hdu[0].header.add_blank()
+
+        events_list_hdu[0].header["RESOLVIT"] = (True, "Processed using Resolvit")
+        events_list_hdu[0].header["RSLV_VER"] = (__version__, "Resolvit version")
+        events_list_hdu[0].header["RSLV_BIN"] = (bin_size, "Time bin size (s)")
+
+        events_list_hdu[0].header["RSLV_FR"] = (
+            total_events_fraction,
+            "Event fraction threshold",
+        )
+
+        events_list_hdu[0].header["RSLV_ITL"] = (
+            len(iteration_offsets),
+            "Number of iterations",
+        )
+
+        for i, offset in enumerate(iteration_offsets, start=1):
+            events_list_hdu[0].header[f"RSLV_IT{i}"] = (
+                float(offset),
+                f"Iteration {i} offset fraction",
+            )
+
+        events_list_hdu.flush()
+
+    copy_exposure_maps(
         events_list,
         paths,
+    )
+
+    generate_image_products(
+        paths.corrected_events_list,
+        paths.instrument_exposure,
+        paths.instrument_image,
+        paths.instrument_error,
+    )
+
+    generate_image_products(
+        paths.corrected_events_list,
+        paths.astronomical_exposure,
+        paths.astronomical_image,
+        paths.astronomical_error,
+        astronomical=True,
     )
