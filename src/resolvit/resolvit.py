@@ -64,7 +64,6 @@ class ResolvitProductPaths:
 
         self.channel_dir = self.events_list.parent
 
-        # uvit/
         self.uvit_dir = self.events_list.parents[2]
 
         self.resolvit_products_dir = self.uvit_dir / "resolvit_data_products"
@@ -115,33 +114,35 @@ class ResolvitProductPaths:
         return self.diagnostics_dir / f"residuals_iteration_{iteration_no}.txt"
 
     @property
-    def corrected_exposure(self):
-        return self.resolvit_channel_dir / (
-            self.events_list.name.replace(
-                "_l2ce.fits",
-                "I_l2exp.fits",
-            )
-        )
-
-    @property
     def log_file(self):
         return self.diagnostics_dir / "resolvit.log"
 
 
-def copy_exposure_map(events_list, paths):
+def copy_exposure_maps(events_list, paths):
 
-    original_exposure = Path(
+    exposure_maps = [
         str(events_list).replace(
             "_l2ce.fits",
             "I_l2exp.fits",
-        )
-    )
+        ),
+        str(events_list).replace(
+            "_l2ce.fits",
+            "A_l2exp.fits",
+        ),
+    ]
 
-    if original_exposure.exists():
-        copy(
-            original_exposure,
-            paths.corrected_exposure,
-        )
+    for exposure_map in exposure_maps:
+
+        exposure_map = Path(exposure_map)
+
+        if exposure_map.exists():
+
+            destination = paths.resolvit_channel_dir / exposure_map.name
+
+            copy(
+                exposure_map,
+                destination,
+            )
 
 
 def read_columns(events_list_hdu):
