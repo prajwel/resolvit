@@ -1,0 +1,36 @@
+[build-system]
+requires = ["hatchling >= 1.26"]
+build-backend = "hatchling.build"
+
+[project]
+name = "resolvit"
+dynamic = ["version"]
+authors = [
+  { name="Prajwel Joseph", email="prajwel.pj@gmail.com" },
+]
+description = "Improve the PSF of UVIT data products"
+readme = "README.md"
+requires-python = ">=3.9"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+license = "Apache-2.0"
+license-files = ["LICEN[CS]E*"]
+
+dependencies = [
+    "numpy",
+    "matplotlib",
+    "astropy",
+    "scipy"
+]
+
+[project.urls]
+Homepage = "https://github.com/prajwel/resolvit"
+Issues = "https://github.com/prajwel/resolvit/issues"
+
+[tool.hatch.version]
+path = "src/resolvit/resolvit.py"
+
+[project.scripts]
+resolvit = "resolvit.cli:main"
