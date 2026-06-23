@@ -434,6 +434,10 @@ def apply_residual_corrections(
         events_list_hdu[1].data["Fx"] = fx_corr
         events_list_hdu[1].data["Fy"] = fy_corr
 
+        events_list_hdu[0].header.add_blank()
+        events_list_hdu[0].header.add_comment("Resolvit processing information")
+        events_list_hdu[0].header.add_blank()
+
         events_list_hdu[0].header["RESOLVIT"] = (True, "Processed using Resolvit")
 
         events_list_hdu[0].header["RSLV_VER"] = (__version__, "Resolvit version")
