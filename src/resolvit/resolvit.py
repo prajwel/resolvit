@@ -7,13 +7,46 @@ from glob import glob
 from pathlib import Path
 from astropy.io import fits
 from astropy.convolution import Gaussian2DKernel, convolve, Box2DKernel
+from datetime import datetime
 from scipy import interpolate
 
 
 __version__ = "0.1.0"
 
 
-class ResolvitPaths:
+def write_processing_log(
+    paths,
+    events_list,
+    bin_size,
+    total_events_fraction,
+    iteration_offsets,
+):
+    with open(paths.log_file, "w") as logfile:
+
+        logfile.write(f"Output file      : " f"{paths.corrected_events_list}\n")
+
+        logfile.write(f"Product ID       : " f"{paths.product_id}\n")
+
+        logfile.write(f"Resolvit version : {__version__}\n")
+
+        logfile.write(f"Run time         : " f"{datetime.utcnow().isoformat()} UTC\n")
+
+        logfile.write(f"Input file       : {events_list}\n")
+
+        logfile.write(f"Bin size         : {bin_size}\n")
+
+        logfile.write(f"Event fraction   : " f"{total_events_fraction}\n")
+
+        logfile.write(f"Iterations       : " f"{len(iteration_offsets)}\n")
+
+        for i, offset in enumerate(
+            iteration_offsets,
+            start=1,
+        ):
+            logfile.write(f"Iteration {i} offset : " f"{offset}\n")
+
+
+class ResolvitProductPaths:
     def __init__(self, events_list):
 
         self.events_list = Path(events_list)
@@ -69,6 +102,10 @@ class ResolvitPaths:
         iteration_no,
     ):
         return self.diagnostics_dir / f"residuals_iteration_{iteration_no}.txt"
+
+    @property
+    def log_file(self):
+        return self.diagnostics_dir / "resolvit.log"
 
 
 def read_columns(events_list_hdu):
@@ -228,8 +265,9 @@ def calculate_residuals(
     iteration_no,
     paths,
 ):
-    events_list_hdu = fits.open(events_list)
-    time, fx, fy, photons = read_columns(events_list_hdu)
+
+    with fits.open(events_list) as events_list_hdu:
+        time, fx, fy, photons = read_columns(events_list_hdu)
 
     # Define bin edges
     t_start = time.min() + start_offset
@@ -321,43 +359,68 @@ def calculate_residuals(
     return residuals
 
 
-def apply_residual_corrections(events_list, residuals, corrected_events_list, bin_size):
-    events_list_hdu = fits.open(events_list)
-    time = events_list_hdu[1].data["MJD_L2"]
-    fx = events_list_hdu[1].data["Fx"]
-    fy = events_list_hdu[1].data["Fy"]
-    dx_events = np.zeros_like(fx)
-    dy_events = np.zeros_like(fx)
+def apply_residual_corrections(
+    events_list,
+    residuals,
+    corrected_events_list,
+    bin_size,
+    total_events_fraction,
+    iteration_offsets,
+):
+    with fits.open(events_list) as events_list_hdu:
+        time = events_list_hdu[1].data["MJD_L2"]
+        fx = events_list_hdu[1].data["Fx"]
+        fy = events_list_hdu[1].data["Fy"]
+        dx_events = np.zeros_like(fx)
+        dy_events = np.zeros_like(fx)
 
-    dx_array = np.array([b["dx"] for b in residuals])
-    dy_array = np.array([b["dy"] for b in residuals])
-    total_events_array = np.array([b["total_events"] for b in residuals])
+        dx_array = np.array([b["dx"] for b in residuals])
+        dy_array = np.array([b["dy"] for b in residuals])
+        total_events_array = np.array([b["total_events"] for b in residuals])
 
-    offset_dx = np.average(dx_array, weights=total_events_array)
-    offset_dy = np.average(dy_array, weights=total_events_array)
+        offset_dx = np.average(dx_array, weights=total_events_array)
+        offset_dy = np.average(dy_array, weights=total_events_array)
 
-    for r in residuals:
-        t0 = r["t_start"]
-        t1 = r["t_end"]
-        dx = r["dx"] - offset_dx
-        dy = r["dy"] - offset_dy
+        for r in residuals:
+            t0 = r["t_start"]
+            t1 = r["t_end"]
+            dx = r["dx"] - offset_dx
+            dy = r["dy"] - offset_dy
 
-        mask = (time >= t0) & (time < t1)
+            mask = (time >= t0) & (time < t1)
 
-        dx_events[mask] = dx
-        dy_events[mask] = dy
+            dx_events[mask] = dx
+            dy_events[mask] = dy
 
-    fx_corr = fx + dx_events
-    fy_corr = fy + dy_events
+        fx_corr = fx + dx_events
+        fy_corr = fy + dy_events
 
-    events_list_hdu[1].data["Fx"] = fx_corr
-    events_list_hdu[1].data["Fy"] = fy_corr
+        events_list_hdu[1].data["Fx"] = fx_corr
+        events_list_hdu[1].data["Fy"] = fy_corr
 
-    events_list_hdu[0].header["RESOLVIT"] = True
-    events_list_hdu[0].header["RSLV_VER"] = __version__
-    events_list_hdu[0].header["RSLV_BIN"] = bin_size
+        events_list_hdu[0].header["RESOLVIT"] = (True, "Processed using Resolvit")
 
-    events_list_hdu.writeto(corrected_events_list, overwrite=True)
+        events_list_hdu[0].header["RSLV_VER"] = (__version__, "Resolvit version")
+
+        events_list_hdu[0].header["RSLV_BIN"] = (bin_size, "Time bin size (s)")
+
+        events_list_hdu[0].header["RSLV_FR"] = (
+            total_events_fraction,
+            "Event fraction threshold",
+        )
+
+        events_list_hdu[0].header["RSLV_ITL"] = (
+            len(iteration_offsets),
+            "Number of iterations",
+        )
+
+        for i, offset in enumerate(iteration_offsets, start=1):
+            events_list_hdu[0].header[f"RSLV_IT{i}"] = (
+                float(offset),
+                f"Iteration {i} offset fraction",
+            )
+
+        events_list_hdu.writeto(corrected_events_list, overwrite=True)
 
 
 def process_observation(
@@ -389,7 +452,15 @@ def process_events_list(
 
     print(f"Processing {Path(events_list).name}")
 
-    paths = ResolvitPaths(events_list)
+    paths = ResolvitProductPaths(events_list)
+
+    write_processing_log(
+        paths,
+        events_list,
+        bin_size,
+        total_events_fraction,
+        iteration_offsets,
+    )
 
     current_file = events_list
 
@@ -410,7 +481,12 @@ def process_events_list(
         )
 
         apply_residual_corrections(
-            current_file, residuals, paths.corrected_events_list, bin_size
+            current_file,
+            residuals,
+            paths.corrected_events_list,
+            bin_size,
+            total_events_fraction,
+            iteration_offsets,
         )
 
         current_file = paths.corrected_events_list
