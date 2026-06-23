@@ -29,20 +29,25 @@ def write_processing_log(
 ):
     with open(paths.log_file, "w") as logfile:
 
-        logfile.write(f"Output file      : " f"{paths.corrected_events_list}\n")
+        logfile.write("Product information\n")
+        logfile.write("-------------------\n")
+        logfile.write(f"Product ID       : {paths.product_id}\n")
+        logfile.write(f"Input file       : {events_list}\n")
+        logfile.write(f"Output file      : {paths.corrected_events_list}\n")
 
-        logfile.write(f"Product ID       : " f"{paths.product_id}\n")
+        logfile.write("\n")
 
+        logfile.write("Run information\n")
+        logfile.write("---------------\n")
         logfile.write(f"Resolvit version : {__version__}\n")
-
         logfile.write(f"Run time         : " f"{datetime.utcnow().isoformat()} UTC\n")
 
-        logfile.write(f"Input file       : {events_list}\n")
+        logfile.write("\n")
 
+        logfile.write("Algorithm parameters\n")
+        logfile.write("--------------------\n")
         logfile.write(f"Bin size         : {bin_size}\n")
-
         logfile.write(f"Event fraction   : " f"{total_events_fraction}\n")
-
         logfile.write(f"Iterations       : " f"{len(iteration_offsets)}\n")
 
         for i, offset in enumerate(
