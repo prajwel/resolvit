@@ -119,7 +119,7 @@ class ResolvitProductPaths:
         return self.resolvit_channel_dir / (
             self.events_list.name.replace(
                 "_l2ce.fits",
-                "_I_l2exp.fits",
+                "I_l2exp.fits",
             )
         )
 
@@ -133,7 +133,7 @@ def copy_exposure_map(events_list, paths):
     original_exposure = Path(
         str(events_list).replace(
             "_l2ce.fits",
-            "_I_l2exp.fits",
+            "I_l2exp.fits",
         )
     )
 
