@@ -4,6 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from glob import glob
+from shutil import copy
 from pathlib import Path
 from astropy.io import fits
 from astropy.convolution import Gaussian2DKernel, convolve, Box2DKernel
@@ -12,6 +13,11 @@ from scipy import interpolate
 
 
 __version__ = "0.1.0"
+
+DEFAULT_BIN_SIZE = 100.0
+DEFAULT_ITERATION_OFFSETS = [0, 1 / 2, 1 / 4, 1 / 3]
+DEFAULT_TOTAL_EVENTS_FRACTION = 0.75
+DEFAULT_UPPER_LIMIT = 10  # sub-pixels
 
 
 def write_processing_log(
@@ -104,8 +110,33 @@ class ResolvitProductPaths:
         return self.diagnostics_dir / f"residuals_iteration_{iteration_no}.txt"
 
     @property
+    def corrected_exposure(self):
+        return self.resolvit_channel_dir / (
+            self.events_list.name.replace(
+                "_l2ce.fits",
+                "_I_l2exp.fits",
+            )
+        )
+
+    @property
     def log_file(self):
         return self.diagnostics_dir / "resolvit.log"
+
+
+def copy_exposure_map(events_list, paths):
+
+    original_exposure = Path(
+        str(events_list).replace(
+            "_l2ce.fits",
+            "_I_l2exp.fits",
+        )
+    )
+
+    if original_exposure.exists():
+        copy(
+            original_exposure,
+            paths.corrected_exposure,
+        )
 
 
 def read_columns(events_list_hdu):
@@ -128,7 +159,7 @@ class EventListCorrelator:
     def __init__(self, reference_events_list, to_match_events_list):
         self.reference_events_list = reference_events_list
         self.to_match_events_list = to_match_events_list
-        self.upper_limit = 10
+        self.upper_limit = DEFAULT_UPPER_LIMIT
 
     def get_columns(self, data):
         time = data["time"]
@@ -157,7 +188,7 @@ class EventListCorrelator:
         peak_position = new_range[max_index]
         return peak_position
 
-    def get_shifts(self, bin_size=1, bg_bin_size=64, correlation_plot=None):
+    def get_shifts(self, bin_size=1, correlation_plot=None):
         # To get shifts
         bins = np.arange(0, 4801, bin_size)
         reference_image = self.get_image(self.reference_events_list, bins)
@@ -425,13 +456,13 @@ def apply_residual_corrections(
 
 def process_observation(
     observation_dir,
-    bin_size=100.0,
+    bin_size=DEFAULT_BIN_SIZE,
     iteration_offsets=None,
-    total_events_fraction=0.75,
+    total_events_fraction=DEFAULT_TOTAL_EVENTS_FRACTION,
 ):
 
     if iteration_offsets is None:
-        iteration_offsets = [0, 1 / 2, 1 / 4, 1 / 3]
+        iteration_offsets = DEFAULT_ITERATION_OFFSETS
 
     events_lists = glob(
         f"{observation_dir}/**/data_products/*_data/**/AS1*l2ce.fits",
@@ -490,3 +521,8 @@ def process_events_list(
         )
 
         current_file = paths.corrected_events_list
+
+    copy_exposure_map(
+        events_list,
+        paths,
+    )
