@@ -28,7 +28,6 @@ from resolvit import process_observation
 process_observation(
     "20160101_A01_123T01_0123456789_level2",
     bin_size=50,
-    total_events_fraction=0.6,
 )
 ```
 
@@ -45,13 +44,6 @@ Specify a custom time bin size:
 ```bash
 resolvit 20160101_A01_123T01_0123456789_level2 \
     --bin-size 50
-```
-
-Specify a custom event fraction threshold:
-
-```bash
-resolvit 20160101_A01_123T01_0123456789_level2 \
-    --event-fraction 0.6
 ```
 
 Show the installed version:
