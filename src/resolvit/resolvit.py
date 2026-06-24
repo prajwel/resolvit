@@ -13,7 +13,7 @@ from datetime import datetime
 from scipy import interpolate
 
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 DEFAULT_BIN_SIZE = 100.0
 DEFAULT_ITERATION_OFFSETS = [0, 1 / 2, 1 / 4, 1 / 3]
@@ -169,6 +169,15 @@ class ResolvitProductPaths:
             self.events_list.name.replace(
                 "_l2ce.fits",
                 "A_l2exp.fits",
+            )
+        )
+
+    @property
+    def original_instrument_exposure(self):
+        return self.channel_dir / (
+            self.events_list.name.replace(
+                "_l2ce.fits",
+                "I_l2exp.fits",
             )
         )
 
@@ -455,9 +464,7 @@ def apply_residual_corrections(
     events_list,
     residuals,
     corrected_events_list,
-    bin_size,
-    total_events_fraction,
-    iteration_offsets,
+    instrument_exposure,
 ):
     with fits.open(events_list) as events_list_hdu:
         time = events_list_hdu[1].data["MJD_L2"]
@@ -489,13 +496,6 @@ def apply_residual_corrections(
 
         events_list_hdu[1].data["Fx"] = fx_corr
         events_list_hdu[1].data["Fy"] = fy_corr
-
-        instrument_exposure = Path(
-            str(events_list).replace(
-                "_l2ce.fits",
-                "I_l2exp.fits",
-            )
-        )
 
         with fits.open(instrument_exposure) as exp_hdu:
             w = WCS(exp_hdu[0].header)
@@ -679,9 +679,7 @@ def process_events_list(
             current_file,
             residuals,
             paths.corrected_events_list,
-            bin_size,
-            total_events_fraction,
-            iteration_offsets,
+            paths.original_instrument_exposure,
         )
 
         current_file = paths.corrected_events_list
