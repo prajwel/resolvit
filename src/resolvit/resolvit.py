@@ -13,7 +13,7 @@ from datetime import datetime
 from scipy import interpolate
 
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 
 DEFAULT_BIN_SIZE = 100.0
 DEFAULT_ITERATION_OFFSETS = [0, 1 / 2, 1 / 4, 1 / 3]
@@ -543,6 +543,47 @@ def instrument_to_astronomical(fx, fy, PC1_1, PC1_2, PC2_1, PC2_2):
     return fx_prime, fy_prime
 
 
+def add_resolvit_keywords(header, source_header):
+
+    header.add_blank()
+    header.add_comment("Resolvit processing information")
+    header.add_blank()
+
+    header["RESOLVIT"] = (
+        source_header["RESOLVIT"],
+        "Processed using Resolvit",
+    )
+
+    header["RSLV_VER"] = (
+        source_header["RSLV_VER"],
+        "Resolvit version",
+    )
+
+    header["RSLV_BIN"] = (
+        source_header["RSLV_BIN"],
+        "Time bin size (s)",
+    )
+
+    header["RSLV_FR"] = (
+        source_header["RSLV_FR"],
+        "Event fraction threshold",
+    )
+
+    header["RSLV_ITL"] = (
+        source_header["RSLV_ITL"],
+        "Number of iterations",
+    )
+
+    for i in range(1, source_header["RSLV_ITL"] + 1):
+
+        key = f"RSLV_IT{i}"
+
+        header[key] = (
+            source_header[key],
+            f"Iteration {i} offset fraction",
+        )
+
+
 def generate_image_products(
     events_list,
     exposure_map,
@@ -567,9 +608,11 @@ def generate_image_products(
         photons = events_hdu[1].data["EFFECTIVE_NUM_PHOTONS"]
 
         image_header = exp_hdu[0].header.copy()
-        for key in events_hdu[0].header:
-            if key.startswith("RSLV") or key == "RESOLVIT":
-                image_header[key] = events_hdu[0].header[key]
+
+        add_resolvit_keywords(
+            image_header,
+            events_hdu[0].header,
+        )
 
         bins = np.arange(-0.5, 4800.5, 1)
 
