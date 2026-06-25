@@ -13,7 +13,7 @@ from datetime import datetime
 from scipy import interpolate
 
 
-__version__ = "0.1.2"
+__version__ = "0.1.3"
 
 DEFAULT_BIN_SIZE = 100.0
 DEFAULT_ITERATION_OFFSETS = [0, 1 / 2, 1 / 4, 1 / 3]
@@ -545,43 +545,18 @@ def instrument_to_astronomical(fx, fy, PC1_1, PC1_2, PC2_1, PC2_2):
 
 def add_resolvit_keywords(header, source_header):
 
-    header.add_blank()
-    header.add_comment("Resolvit processing information")
-    header.add_blank()
-
-    header["RESOLVIT"] = (
-        source_header["RESOLVIT"],
-        "Processed using Resolvit",
-    )
-
-    header["RSLV_VER"] = (
-        source_header["RSLV_VER"],
-        "Resolvit version",
-    )
-
-    header["RSLV_BIN"] = (
-        source_header["RSLV_BIN"],
-        "Time bin size (s)",
-    )
-
-    header["RSLV_FR"] = (
-        source_header["RSLV_FR"],
-        "Event fraction threshold",
-    )
-
-    header["RSLV_ITL"] = (
-        source_header["RSLV_ITL"],
-        "Number of iterations",
-    )
+    header.append(source_header.cards["RESOLVIT"])
+    header.append(source_header.cards["RSLV_VER"])
+    header.append(source_header.cards["RSLV_BIN"])
+    header.append(source_header.cards["RSLV_FR"])
+    header.append(source_header.cards["RSLV_ITL"])
 
     for i in range(1, source_header["RSLV_ITL"] + 1):
+        header.append(source_header.cards[f"RSLV_IT{i}"])
 
-        key = f"RSLV_IT{i}"
-
-        header[key] = (
-            source_header[key],
-            f"Iteration {i} offset fraction",
-        )
+    header.insert("RESOLVIT", ("", ""))
+    header.insert("RESOLVIT", ("", "Resolvit processing information"))
+    header.insert("RESOLVIT", ("", ""))
 
 
 def generate_image_products(
@@ -644,21 +619,19 @@ def generate_image_products(
 
         image_hdu = fits.PrimaryHDU(cps)
         image_hdu.header.update(image_header)
+        image_hdu.header["FILENAME"] = image_file.name
+        image_hdu.header["FILEDATE"] = datetime.utcnow().isoformat(timespec="seconds")
+        image_hdu.header["FILEORIG"] = "Resolvit"
         image_hdu.header["DATATYPE"] = "count-rate image"
+        image_hdu.writeto(image_file, overwrite=True)
 
         error_hdu = fits.PrimaryHDU(cps_error)
         error_hdu.header.update(image_header)
+        error_hdu.header["FILENAME"] = error_file.name
+        error_hdu.header["FILEDATE"] = datetime.utcnow().isoformat(timespec="seconds")
+        error_hdu.header["FILEORIG"] = "Resolvit"
         error_hdu.header["DATATYPE"] = "count-rate error image"
-
-        image_hdu.writeto(
-            image_file,
-            overwrite=True,
-        )
-
-        error_hdu.writeto(
-            error_file,
-            overwrite=True,
-        )
+        error_hdu.writeto(error_file, overwrite=True)
 
 
 def process_observation(
@@ -728,10 +701,6 @@ def process_events_list(
         current_file = paths.corrected_events_list
 
     with fits.open(paths.corrected_events_list, mode="update") as events_list_hdu:
-        events_list_hdu[0].header.add_blank()
-        events_list_hdu[0].header.add_comment("Resolvit processing information")
-        events_list_hdu[0].header.add_blank()
-
         events_list_hdu[0].header["RESOLVIT"] = (True, "Processed using Resolvit")
         events_list_hdu[0].header["RSLV_VER"] = (__version__, "Resolvit version")
         events_list_hdu[0].header["RSLV_BIN"] = (bin_size, "Time bin size (s)")
@@ -751,6 +720,12 @@ def process_events_list(
                 float(offset),
                 f"Iteration {i} offset fraction",
             )
+
+        events_list_hdu[0].header.insert("RESOLVIT", ("", ""))
+        events_list_hdu[0].header.insert(
+            "RESOLVIT", ("", "Resolvit processing information")
+        )
+        events_list_hdu[0].header.insert("RESOLVIT", ("", ""))
 
         events_list_hdu.flush()
 
