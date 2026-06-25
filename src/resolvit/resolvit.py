@@ -13,7 +13,7 @@ from datetime import datetime
 from scipy import interpolate
 
 
-__version__ = "0.1.3"
+__version__ = "0.1.4"
 
 DEFAULT_BIN_SIZE = 100.0
 DEFAULT_ITERATION_OFFSETS = [0, 1 / 2, 1 / 4, 1 / 3]
@@ -618,7 +618,7 @@ def generate_image_products(
         cps_error = cps_error.astype(np.float32)
 
         image_hdu = fits.PrimaryHDU(cps)
-        image_hdu.header.update(image_header)
+        image_hdu.header = image_header
         image_hdu.header["FILENAME"] = image_file.name
         image_hdu.header["FILEDATE"] = datetime.utcnow().isoformat(timespec="seconds")
         image_hdu.header["FILEORIG"] = "Resolvit"
@@ -626,7 +626,7 @@ def generate_image_products(
         image_hdu.writeto(image_file, overwrite=True)
 
         error_hdu = fits.PrimaryHDU(cps_error)
-        error_hdu.header.update(image_header)
+        error_hdu.header = image_header
         error_hdu.header["FILENAME"] = error_file.name
         error_hdu.header["FILEDATE"] = datetime.utcnow().isoformat(timespec="seconds")
         error_hdu.header["FILEORIG"] = "Resolvit"
