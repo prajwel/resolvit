@@ -13,7 +13,7 @@ from datetime import datetime
 from scipy import interpolate
 
 
-__version__ = "0.1.4"
+__version__ = "0.1.5"
 
 DEFAULT_BIN_SIZE = 100.0
 DEFAULT_ITERATION_OFFSETS = [0, 1 / 2, 1 / 4, 1 / 3]
@@ -58,60 +58,34 @@ def write_processing_log(
             logfile.write(f"Iteration {i} offset : " f"{offset}\n")
 
 
-class ResolvitProductPaths:
-    def __init__(self, events_list):
-
+class ResolvitPaths:
+    def __init__(self, events_list, output_dir):
         self.events_list = Path(events_list)
 
-        self.channel_dir = self.events_list.parent
+        self.output_dir = Path(output_dir)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
 
-        self.uvit_dir = self.events_list.parents[2]
-
-        self.resolvit_products_dir = self.uvit_dir / "resolvit_data_products"
-
-        self.channel_name = self.channel_dir.name
-
-        self.resolvit_channel_dir = self.resolvit_products_dir / self.channel_name
-
-        self.resolvit_channel_dir.mkdir(
-            parents=True,
-            exist_ok=True,
+        self.product_id = self.events_list.name.replace(
+            "_l2ce.fits",
+            "",
         )
 
-        self.product_id = self.events_list.name.replace("_l2ce.fits", "")
+        self.diagnostics_dir = self.output_dir / "diagnostics" / self.product_id
 
-        self.diagnostics_dir = (
-            self.resolvit_products_dir / "diagnostics" / self.product_id
-        )
+        self.diagnostics_dir.mkdir(parents=True, exist_ok=True)
 
-        self.diagnostics_dir.mkdir(
-            parents=True,
-            exist_ok=True,
-        )
+        self.corrected_events_list = self.output_dir / self.events_list.name
 
-        self.corrected_events_list = self.resolvit_channel_dir / self.events_list.name
-
-    def correlation_plot(
-        self,
-        iteration_no,
-        bin_size,
-        t_mid,
-    ):
+    def correlation_plot(self, iteration_no, bin_size, t_mid):
         return (
             self.diagnostics_dir
             / f"{iteration_no}_{bin_size:.0f}_{t_mid:.0f}_correlations.png"
         )
 
-    def residual_plot(
-        self,
-        iteration_no,
-    ):
+    def residual_plot(self, iteration_no):
         return self.diagnostics_dir / f"residuals_iteration_{iteration_no}.png"
 
-    def residual_file(
-        self,
-        iteration_no,
-    ):
+    def residual_file(self, iteration_no):
         return self.diagnostics_dir / f"residuals_iteration_{iteration_no}.txt"
 
     @property
@@ -120,93 +94,45 @@ class ResolvitProductPaths:
 
     @property
     def detector_image(self):
-        return self.resolvit_channel_dir / (
-            self.events_list.name.replace(
-                "_l2ce.fits",
-                "I_l2img.fits",
-            )
+        return self.output_dir / self.events_list.name.replace(
+            "_l2ce.fits",
+            "I_l2img.fits",
         )
 
     @property
     def detector_error(self):
-        return self.resolvit_channel_dir / (
-            self.events_list.name.replace(
-                "_l2ce.fits",
-                "I_l2err.fits",
-            )
+        return self.output_dir / self.events_list.name.replace(
+            "_l2ce.fits",
+            "I_l2err.fits",
         )
 
     @property
     def astronomical_image(self):
-        return self.resolvit_channel_dir / (
-            self.events_list.name.replace(
-                "_l2ce.fits",
-                "A_l2img.fits",
-            )
+        return self.output_dir / self.events_list.name.replace(
+            "_l2ce.fits",
+            "A_l2img.fits",
         )
 
     @property
     def astronomical_error(self):
-        return self.resolvit_channel_dir / (
-            self.events_list.name.replace(
-                "_l2ce.fits",
-                "A_l2err.fits",
-            )
+        return self.output_dir / self.events_list.name.replace(
+            "_l2ce.fits",
+            "A_l2err.fits",
         )
 
     @property
     def detector_exposure(self):
-        return self.resolvit_channel_dir / (
-            self.events_list.name.replace(
-                "_l2ce.fits",
-                "I_l2exp.fits",
-            )
+        return self.output_dir / self.events_list.name.replace(
+            "_l2ce.fits",
+            "I_l2exp.fits",
         )
 
     @property
     def astronomical_exposure(self):
-        return self.resolvit_channel_dir / (
-            self.events_list.name.replace(
-                "_l2ce.fits",
-                "A_l2exp.fits",
-            )
-        )
-
-    @property
-    def original_detector_exposure(self):
-        return self.channel_dir / (
-            self.events_list.name.replace(
-                "_l2ce.fits",
-                "I_l2exp.fits",
-            )
-        )
-
-
-def copy_exposure_maps(events_list, paths):
-
-    exposure_maps = [
-        str(events_list).replace(
-            "_l2ce.fits",
-            "I_l2exp.fits",
-        ),
-        str(events_list).replace(
+        return self.output_dir / self.events_list.name.replace(
             "_l2ce.fits",
             "A_l2exp.fits",
-        ),
-    ]
-
-    for exposure_map in exposure_maps:
-
-        exposure_map = Path(exposure_map)
-
-        if exposure_map.exists():
-
-            destination = paths.resolvit_channel_dir / exposure_map.name
-
-            copy(
-                exposure_map,
-                destination,
-            )
+        )
 
 
 def read_and_filter_events(events_list_hdu):
@@ -653,21 +579,44 @@ def process_observation(
         recursive=True,
     )
 
-    events_lists = sorted(events_lists)
-
     for events_list in events_lists:
-        process_events_list(
-            events_list, bin_size, iteration_offsets, total_events_fraction
+        events_list_path = Path(events_list)
+
+        output_dir = (
+            events_list_path.parents[2]
+            / "resolvit_data_products"
+            / events_list_path.parent.name
+        )
+
+        detector_exposure = str(events_list).replace("_l2ce.fits", "I_l2exp.fits")
+        astronomical_exposure = str(events_list).replace("_l2ce.fits", "A_l2exp.fits")
+
+        paths = process_events_list(
+            events_list,
+            output_dir,
+            bin_size,
+            iteration_offsets,
+            total_events_fraction,
+        )
+
+        generate_products(
+            paths,
+            detector_exposure,
+            astronomical_exposure,
         )
 
 
 def process_events_list(
-    events_list, bin_size, iteration_offsets, total_events_fraction
+    events_list,
+    output_dir,
+    bin_size,
+    iteration_offsets,
+    total_events_fraction,
 ):
 
     print(f"Processing {Path(events_list).name}")
 
-    paths = ResolvitProductPaths(events_list)
+    paths = ResolvitPaths(events_list, output_dir)
 
     write_processing_log(
         paths,
@@ -679,10 +628,7 @@ def process_events_list(
 
     current_file = events_list
 
-    for i, frac in enumerate(
-        iteration_offsets,
-        start=1,
-    ):
+    for i, frac in enumerate(iteration_offsets, start=1):
 
         offset = bin_size * frac
 
@@ -701,46 +647,49 @@ def process_events_list(
             paths.corrected_events_list,
         )
 
-        update_world_coordinates(
-            paths.corrected_events_list,
-            paths.original_detector_exposure,
-        )
-
         current_file = paths.corrected_events_list
 
     with fits.open(paths.corrected_events_list, mode="update") as events_list_hdu:
-        events_list_hdu[0].header["RESOLVIT"] = (True, "Processed using Resolvit")
-        events_list_hdu[0].header["RSLV_VER"] = (__version__, "Resolvit version")
-        events_list_hdu[0].header["RSLV_BIN"] = (bin_size, "Time bin size (s)")
 
-        events_list_hdu[0].header["RSLV_FR"] = (
+        header = events_list_hdu[0].header
+
+        header["RESOLVIT"] = (True, "Processed using Resolvit")
+        header["RSLV_VER"] = (__version__, "Resolvit version")
+        header["RSLV_BIN"] = (bin_size, "Time bin size (s)")
+        header["RSLV_FR"] = (
             total_events_fraction,
             "Event fraction threshold",
         )
-
-        events_list_hdu[0].header["RSLV_ITL"] = (
+        header["RSLV_ITL"] = (
             len(iteration_offsets),
             "Number of iterations",
         )
 
         for i, offset in enumerate(iteration_offsets, start=1):
-            events_list_hdu[0].header[f"RSLV_IT{i}"] = (
+            header[f"RSLV_IT{i}"] = (
                 float(offset),
                 f"Iteration {i} offset fraction",
             )
 
-        events_list_hdu[0].header.insert("RESOLVIT", ("", ""))
-        events_list_hdu[0].header.insert(
-            "RESOLVIT", ("", "Resolvit processing information")
+        header.insert("RESOLVIT", ("", ""))
+        header.insert(
+            "RESOLVIT",
+            ("", "Resolvit processing information"),
         )
-        events_list_hdu[0].header.insert("RESOLVIT", ("", ""))
+        header.insert("RESOLVIT", ("", ""))
 
         events_list_hdu.flush()
 
-    copy_exposure_maps(
-        events_list,
-        paths,
-    )
+    return paths
+
+
+def generate_products(paths, detector_exposure, astronomical_exposure):
+
+    update_world_coordinates(paths.corrected_events_list, detector_exposure)
+
+    for exposure_map in (detector_exposure, astronomical_exposure):
+        if exposure_map.exists():
+            copy(exposure_map, paths.output_dir / exposure_map.name)
 
     generate_image_products(
         paths.corrected_events_list,
