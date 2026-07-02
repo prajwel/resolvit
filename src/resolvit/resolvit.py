@@ -13,7 +13,7 @@ from datetime import datetime
 from scipy import interpolate
 
 
-__version__ = "0.1.5"
+__version__ = "0.2.0"
 
 DEFAULT_BIN_SIZE = 100.0
 DEFAULT_ITERATION_OFFSETS = [0, 1 / 2, 1 / 4, 1 / 3]
@@ -588,8 +588,13 @@ def process_observation(
             / events_list_path.parent.name
         )
 
-        detector_exposure = str(events_list).replace("_l2ce.fits", "I_l2exp.fits")
-        astronomical_exposure = str(events_list).replace("_l2ce.fits", "A_l2exp.fits")
+        detector_exposure = events_list_path.with_name(
+            events_list_path.name.replace("_l2ce.fits", "I_l2exp.fits")
+        )
+
+        astronomical_exposure = events_list_path.with_name(
+            events_list_path.name.replace("_l2ce.fits", "A_l2exp.fits")
+        )
 
         paths = process_events_list(
             events_list,
