@@ -460,16 +460,17 @@ def calculate_residuals(
     return residuals
 
 
-def apply_residual_corrections(
+def apply_detector_corrections(
     events_list,
     residuals,
     corrected_events_list,
-    detector_exposure,
 ):
     with fits.open(events_list) as events_list_hdu:
+
         time = events_list_hdu[1].data["MJD_L2"]
         fx = events_list_hdu[1].data["Fx"]
         fy = events_list_hdu[1].data["Fy"]
+
         dx_events = np.zeros_like(fx)
         dy_events = np.zeros_like(fx)
 
@@ -481,35 +482,38 @@ def apply_residual_corrections(
         offset_dy = np.average(dy_array, weights=total_events_array)
 
         for r in residuals:
-            t0 = r["t_start"]
-            t1 = r["t_end"]
-            dx = r["dx"] - offset_dx
-            dy = r["dy"] - offset_dy
 
-            mask = (time >= t0) & (time < t1)
+            mask = (time >= r["t_start"]) & (time < r["t_end"])
 
-            dx_events[mask] = dx
-            dy_events[mask] = dy
+            dx_events[mask] = r["dx"] - offset_dx
+            dy_events[mask] = r["dy"] - offset_dy
 
-        fx_corr = fx + dx_events
-        fy_corr = fy + dy_events
+        events_list_hdu[1].data["Fx"] = fx + dx_events
+        events_list_hdu[1].data["Fy"] = fy + dy_events
 
-        events_list_hdu[1].data["Fx"] = fx_corr
-        events_list_hdu[1].data["Fy"] = fy_corr
+        events_list_hdu.writeto(corrected_events_list, overwrite=True)
 
-        with fits.open(detector_exposure) as exp_hdu:
-            w = WCS(exp_hdu[0].header)
-            PC1_1 = exp_hdu[0].header["PC1_1"]
-            PC1_2 = exp_hdu[0].header["PC1_2"]
-            PC2_1 = exp_hdu[0].header["PC2_1"]
-            PC2_2 = exp_hdu[0].header["PC2_2"]
-            CDELT1 = exp_hdu[0].header["CDELT1"]
-            CDELT2 = exp_hdu[0].header["CDELT2"]
 
-        sky = w.pixel_to_world(
-            fx_corr,
-            fy_corr,
-        )
+def update_world_coordinates(corrected_events_list, detector_exposure):
+    with (
+        fits.open(corrected_events_list, mode="update") as events_list_hdu,
+        fits.open(detector_exposure) as exp_hdu,
+    ):
+
+        fx = events_list_hdu[1].data["Fx"]
+        fy = events_list_hdu[1].data["Fy"]
+
+        w = WCS(exp_hdu[0].header)
+
+        PC1_1 = exp_hdu[0].header["PC1_1"]
+        PC1_2 = exp_hdu[0].header["PC1_2"]
+        PC2_1 = exp_hdu[0].header["PC2_1"]
+        PC2_2 = exp_hdu[0].header["PC2_2"]
+
+        CDELT1 = exp_hdu[0].header["CDELT1"]
+        CDELT2 = exp_hdu[0].header["CDELT2"]
+
+        sky = w.pixel_to_world(fx, fy)
 
         events_list_hdu[1].data["Sky_RA"] = sky.ra.degree
         events_list_hdu[1].data["Sky_DEC"] = sky.dec.degree
@@ -526,15 +530,15 @@ def apply_residual_corrections(
             events_list_hdu[1].data["Fx_astronomical"],
             events_list_hdu[1].data["Fy_astronomical"],
         ) = detector_to_astronomical(
-            fx_corr,
-            fy_corr,
+            fx,
+            fy,
             PC1_1,
             PC1_2,
             PC2_1,
             PC2_2,
         )
 
-        events_list_hdu.writeto(corrected_events_list, overwrite=True)
+        events_list_hdu.flush()
 
 
 def detector_to_astronomical(fx, fy, PC1_1, PC1_2, PC2_1, PC2_2):
@@ -691,9 +695,13 @@ def process_events_list(
             paths,
         )
 
-        apply_residual_corrections(
+        apply_detector_corrections(
             current_file,
             residuals,
+            paths.corrected_events_list,
+        )
+
+        update_world_coordinates(
             paths.corrected_events_list,
             paths.original_detector_exposure,
         )
