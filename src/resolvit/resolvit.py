@@ -119,7 +119,7 @@ class ResolvitProductPaths:
         return self.diagnostics_dir / "resolvit.log"
 
     @property
-    def instrument_image(self):
+    def detector_image(self):
         return self.resolvit_channel_dir / (
             self.events_list.name.replace(
                 "_l2ce.fits",
@@ -128,7 +128,7 @@ class ResolvitProductPaths:
         )
 
     @property
-    def instrument_error(self):
+    def detector_error(self):
         return self.resolvit_channel_dir / (
             self.events_list.name.replace(
                 "_l2ce.fits",
@@ -155,7 +155,7 @@ class ResolvitProductPaths:
         )
 
     @property
-    def instrument_exposure(self):
+    def detector_exposure(self):
         return self.resolvit_channel_dir / (
             self.events_list.name.replace(
                 "_l2ce.fits",
@@ -173,7 +173,7 @@ class ResolvitProductPaths:
         )
 
     @property
-    def original_instrument_exposure(self):
+    def original_detector_exposure(self):
         return self.channel_dir / (
             self.events_list.name.replace(
                 "_l2ce.fits",
@@ -464,7 +464,7 @@ def apply_residual_corrections(
     events_list,
     residuals,
     corrected_events_list,
-    instrument_exposure,
+    detector_exposure,
 ):
     with fits.open(events_list) as events_list_hdu:
         time = events_list_hdu[1].data["MJD_L2"]
@@ -497,7 +497,7 @@ def apply_residual_corrections(
         events_list_hdu[1].data["Fx"] = fx_corr
         events_list_hdu[1].data["Fy"] = fy_corr
 
-        with fits.open(instrument_exposure) as exp_hdu:
+        with fits.open(detector_exposure) as exp_hdu:
             w = WCS(exp_hdu[0].header)
             PC1_1 = exp_hdu[0].header["PC1_1"]
             PC1_2 = exp_hdu[0].header["PC1_2"]
@@ -525,7 +525,7 @@ def apply_residual_corrections(
         (
             events_list_hdu[1].data["Fx_astronomical"],
             events_list_hdu[1].data["Fy_astronomical"],
-        ) = instrument_to_astronomical(
+        ) = detector_to_astronomical(
             fx_corr,
             fy_corr,
             PC1_1,
@@ -537,7 +537,7 @@ def apply_residual_corrections(
         events_list_hdu.writeto(corrected_events_list, overwrite=True)
 
 
-def instrument_to_astronomical(fx, fy, PC1_1, PC1_2, PC2_1, PC2_2):
+def detector_to_astronomical(fx, fy, PC1_1, PC1_2, PC2_1, PC2_2):
     fx_prime = (PC1_1 * (fx - 2400)) + (PC1_2 * (fy - 2400)) + 2400
     fy_prime = (PC2_1 * (fx - 2400)) + (PC2_2 * (fy - 2400)) + 2400
     return fx_prime, fy_prime
@@ -695,7 +695,7 @@ def process_events_list(
             current_file,
             residuals,
             paths.corrected_events_list,
-            paths.original_instrument_exposure,
+            paths.original_detector_exposure,
         )
 
         current_file = paths.corrected_events_list
@@ -736,9 +736,9 @@ def process_events_list(
 
     generate_image_products(
         paths.corrected_events_list,
-        paths.instrument_exposure,
-        paths.instrument_image,
-        paths.instrument_error,
+        paths.detector_exposure,
+        paths.detector_image,
+        paths.detector_error,
     )
 
     generate_image_products(
