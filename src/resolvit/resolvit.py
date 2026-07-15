@@ -13,7 +13,7 @@ from datetime import datetime
 from scipy import interpolate
 
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 DEFAULT_BIN_SIZE = 100.0
 DEFAULT_ITERATION_OFFSETS = [0, 1 / 2, 1 / 4, 1 / 3]
@@ -570,6 +570,37 @@ def process_observation(
     iteration_offsets=None,
     total_events_fraction=DEFAULT_TOTAL_EVENTS_FRACTION,
 ):
+    """
+    Process all UVIT Level2 events lists within an observation.
+
+    The function searches an observation directory recursively for UVIT Level2
+    events lists, estimates and corrects the residual drift in each events list,
+    and generates corrected data products.
+
+    Parameters
+    ----------
+    observation_dir : str or pathlib.Path
+        Root directory of the UVIT observation.
+
+    bin_size : float, default=100.0
+        Temporal bin size, in seconds, used for residual drift estimation.
+
+    iteration_offsets : sequence of float, optional
+        Fractional temporal offsets used for successive correction
+        iterations. If omitted, the default sequence
+        ``[0, 1/2, 1/4, 1/3]`` is used.
+
+    total_events_fraction : float, default=0.75
+        Minimum fraction of the median event count required for a
+        temporal bin to be used for residual drift estimation.
+
+    Notes
+    -----
+    Corrected events lists, detector-coordinate images, astronomical
+    images, error maps, exposure maps, and diagnostic products are
+    written to a ``resolvit_data_products`` directory within the
+    observation.
+    """
 
     if iteration_offsets is None:
         iteration_offsets = DEFAULT_ITERATION_OFFSETS
@@ -618,6 +649,38 @@ def process_events_list(
     iteration_offsets,
     total_events_fraction,
 ):
+    """
+    Process a single UVIT Level2 events list.
+
+    The function estimates the residual drift in the supplied events
+    list, applies detector-coordinate corrections iteratively, and
+    produces a corrected events list.
+
+    Parameters
+    ----------
+    events_list : str or pathlib.Path
+        Input UVIT Level2 events list.
+
+    output_dir : str or pathlib.Path
+        Directory where the corrected events list and diagnostic products
+        will be written.
+
+    bin_size : float
+        Temporal bin size, in seconds.
+
+    iteration_offsets : sequence of float
+        Fractional temporal offsets used for successive correction
+        iterations.
+
+    total_events_fraction : float
+        Minimum fraction of the median event count required for a
+        temporal bin to participate in residual drift estimation.
+
+    Returns
+    -------
+    ResolvitPaths
+        Object describing the locations of the generated products.
+    """
 
     print(f"Processing {Path(events_list).name}")
 
