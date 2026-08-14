@@ -13,7 +13,7 @@ from datetime import datetime
 from scipy import interpolate
 
 
-__version__ = "0.2.1"
+__version__ = "0.2.2"
 
 DEFAULT_BIN_SIZE = 100.0
 DEFAULT_ITERATION_OFFSETS = [0, 1 / 2, 1 / 4, 1 / 3]
@@ -511,6 +511,13 @@ def generate_image_products(
         fx = events_hdu[1].data[fx_keyword]
         fy = events_hdu[1].data[fy_keyword]
         photons = events_hdu[1].data["EFFECTIVE_NUM_PHOTONS"]
+        bad_flag = events_hdu[1].data["BAD FLAG"]
+
+        mask = photons > 0
+        mask = np.logical_and(mask, bad_flag)
+        fx = fx[mask]
+        fy = fy[mask]
+        photons = photons[mask]
 
         image_header = exp_hdu[0].header.copy()
 
