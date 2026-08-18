@@ -13,9 +13,9 @@ from datetime import datetime
 from scipy import interpolate
 
 
-__version__ = "0.2.2"
+__version__ = "0.3.2"
 
-DEFAULT_BIN_SIZE = 100.0
+DEFAULT_BIN_SIZE = 100.0  # seconds
 DEFAULT_ITERATION_OFFSETS = [0, 1 / 2, 1 / 4, 1 / 3]
 DEFAULT_TOTAL_EVENTS_FRACTION = 0.75
 DEFAULT_UPPER_LIMIT = 10  # sub-pixels
@@ -171,6 +171,17 @@ class EventListCorrelator:
         )
         return ndarray
 
+    def get_image_after_bkg_removal(self, hdu, bins):
+        image = self.get_image(hdu, bins)
+
+        box_kernel = Box2DKernel(5)
+        boxed_image = convolve(image, box_kernel)
+        background_mask = boxed_image <= (4 / 25)
+
+        image[background_mask] = 0
+
+        return image
+
     def get_lag(self, correlations, shift_range):
         f = interpolate.interp1d(shift_range, correlations, kind="quadratic")
         new_range = np.linspace(
@@ -185,19 +196,15 @@ class EventListCorrelator:
         return peak_position
 
     def get_shifts(self, bin_size=1, correlation_plot=None):
-        # To get shifts
         bins = np.arange(0, 4801, bin_size)
-        reference_image = self.get_image(self.reference_events_list, bins)
-        to_match_image = self.get_image(self.to_match_events_list, bins)
+        reference_image = self.get_image_after_bkg_removal(
+            self.reference_events_list, bins
+        )
+        to_match_image = self.get_image_after_bkg_removal(
+            self.to_match_events_list, bins
+        )
 
-        box_kernel = Box2DKernel(5)
-        boxed_reference_image = convolve(reference_image, box_kernel)
-        reference_image_background_mask = boxed_reference_image <= (4 / 25)
-        reference_image[reference_image_background_mask] = 0
-
-        boxed_to_match_image = convolve(to_match_image, box_kernel)
-        to_match_image_background_mask = boxed_to_match_image <= (4 / 25)
-        to_match_image[to_match_image_background_mask] = 0
+        events_after_bkg_removal = np.round(np.sum(to_match_image))
 
         kernel = Gaussian2DKernel(x_stddev=1)
         smoothed_reference_image = convolve(reference_image, kernel)
@@ -247,7 +254,7 @@ class EventListCorrelator:
             fig.savefig(correlation_plot, dpi=150)
         plt.close(fig)
 
-        return x_shift, y_shift
+        return x_shift, y_shift, events_after_bkg_removal
 
 
 def plot_residuals(residuals, figure_name):
@@ -271,7 +278,14 @@ def plot_residuals(residuals, figure_name):
 def save_residuals_to_file(residuals, filename):
     data = np.array(
         [
-            [r["t_start"], r["t_end"], r["total_events"], r["dx"], r["dy"]]
+            [
+                r["t_start"],
+                r["t_end"],
+                r["total_events"],
+                r["events_after_bkg_removal"],
+                r["dx"],
+                r["dy"],
+            ]
             for r in residuals
         ]
     )
@@ -279,8 +293,8 @@ def save_residuals_to_file(residuals, filename):
     np.savetxt(
         filename,
         data,
-        header="t_start t_end total_events dx dy",
-        fmt=["%.6f", "%.6f", "%d", "%.6f", "%.6f"],
+        header="t_start t_end total_events events_after_bkg_removal dx dy",
+        fmt=["%.6f", "%.6f", "%d", "%d", "%.6f", "%.6f"],
     )
 
 
@@ -336,11 +350,20 @@ def calculate_residuals(
                     "photons": data["photons"],
                 }
 
+                reference_correlation = EventListCorrelator(
+                    reference_data, reference_data
+                )
+                reference_image = reference_correlation.get_image_after_bkg_removal(
+                    reference_data, np.arange(0, 4801, 1)
+                )
+                events_after_bkg_removal = np.round(np.sum(reference_image))
+
                 residuals.append(
                     {
                         "t_start": data["t_start"],
                         "t_end": data["t_end"],
                         "total_events": data["total_events"],
+                        "events_after_bkg_removal": events_after_bkg_removal,
                         "dx": 0,
                         "dy": 0,
                     }
@@ -355,7 +378,7 @@ def calculate_residuals(
 
                 init_correlation = EventListCorrelator(reference_data, to_match_data)
                 t_mid = (data["t_start"] + data["t_end"]) / 2
-                dx, dy = init_correlation.get_shifts(
+                dx, dy, events_after_bkg_removal = init_correlation.get_shifts(
                     correlation_plot=paths.correlation_plot(
                         iteration_no,
                         bin_size,
@@ -368,6 +391,7 @@ def calculate_residuals(
                         "t_start": data["t_start"],
                         "t_end": data["t_end"],
                         "total_events": data["total_events"],
+                        "events_after_bkg_removal": events_after_bkg_removal,
                         "dx": dx,
                         "dy": dy,
                     }
