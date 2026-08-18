@@ -108,7 +108,6 @@ resolvit_data_products/
         ├── residuals_iteration_4.txt
         ├── residuals_iteration_4.png
         ├── <iteration>_<bin_number>_<bin_mid_time>_correlations.png
-        ├── <iteration>_<bin_number>_<bin_mid_time>_correlations.png
         ├── ...
         └── resolvit.log
 ```
@@ -133,10 +132,10 @@ The correlation plots show the X and Y correlation functions used to determine t
 
 The `residuals_iteration_N.txt` file contains the residual drift estimates obtained during iteration `N`. Each row corresponds to a temporal bin used for residual drift estimation.
 
-The file contains five columns:
+The file contains six columns:
 
 ```text
-t_start t_end total_events dx dy
+t_start t_end total_events events_after_bkg_removal dx dy
 ```
 
 where:
@@ -151,6 +150,8 @@ where:
 
 * `total_events` — total number of events in the temporal bin, including both source and background events.
 
+* `events_after_bkg_removal` — total number of events in the temporal bin, after removal of background events.
+
 * `dx` — measured residual shift in the detector X direction, in sub-pixels.
 
 * `dy` — measured residual shift in the detector Y direction, in sub-pixels.
@@ -158,11 +159,11 @@ where:
 For example:
 
 ```text
-# t_start t_end total_events dx dy
-418441693.275282 418441793.275282 80530 0.000000 0.000000
-418441793.275282 418441893.275282 81233 0.404955 0.052406
-418441893.275282 418441993.275282 85853 0.633635 0.233444
-418463893.275282 418463993.275282 78350 1.291091 1.110052
+# t_start t_end total_events events_after_bkg_removal dx dy
+418441693.275282 418441793.275282 80530 68421 0.000000 0.000000
+418441793.275282 418441893.275282 81233 69104 0.404955 0.052406
+418441893.275282 418441993.275282 85853 73128 0.633635 0.233444
+418463893.275282 418463993.275282 78350 66742 1.291091 1.110052
 ...
 ```
 
